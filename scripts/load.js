@@ -1,6 +1,11 @@
+/* podman run --rm -i \
+  -v "$(pwd)/scripts":/scripts:z \
+  -e TARGET_URL=http://192.168.0.210:9000 \
+  grafana/k6 run /scripts/load.js
+*/
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { randomString } from 'k6/javascript';
 
 export const options = {
   stages: [
@@ -16,16 +21,18 @@ export const options = {
   },
 };
 
-// Target URL defaults to localhost or can be overridden via environment variable
-const BASE_URL = __ENV.TARGET_URL || 'http://192.168.1.50:8000';
+const BASE_URL = __ENV.TARGET_URL || 'http://192.168.0.210:9000';
 
 export default function () {
   const headers = { 'Content-Type': 'application/json' };
 
+  // Use native JS to generate a random string instead of importing k6/javascript
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+
   // 1. WRITE: Create a new item (POST /items/)
   const payload = JSON.stringify({
-    title: `Item_${randomString(5)}`,
-    description: `Load test description ${randomString(10)}`,
+    title: `Item_${randomSuffix}`,
+    description: `Load test description ${randomSuffix}`,
   });
 
   let res = http.post(`${BASE_URL}/items/`, payload, { headers });
