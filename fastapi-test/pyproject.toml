@@ -1,0 +1,20 @@
+[project]
+name = "fastapi-test"
+version = "0.1.0"
+description = "simple fast api to perform a load test on."
+readme = "README.md"
+authors = [
+    { name = "greeenboi", email = "suvan.gowrishanker.204@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.156.8",
+    "sqlalchemy>=2.1.5",
+]
+
+[project.scripts]
+fastapi-test = "fastapi_test:main"
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14.0"]
+build-backend = "uv_build"
