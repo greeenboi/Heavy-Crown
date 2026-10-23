@@ -61,9 +61,10 @@ const profiles = {
     startVUs: 0,
     stages: [
       { duration: '15s', target: 20 },
-      { duration: '30s', target: 100 },
-      { duration: '30s', target: 250 },
+      { duration: '20s', target: 100 },
+      { duration: '25s', target: 250 },
       { duration: '20s', target: 500 },
+      { duration: '20s', target: 750 },
       { duration: '15s', target: 0 },
     ],
   },
