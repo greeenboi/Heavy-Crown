@@ -1,6 +1,8 @@
 use std::{
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, mpsc},
     thread,
+    time::Duration,
 };
 
 use r2d2::Pool;
@@ -25,9 +27,16 @@ pub struct Item {
 
 pub fn create_pool(database_path: &str) -> Result<DbPool, Box<dyn std::error::Error>> {
     let manager = SqliteConnectionManager::file(database_path);
-    let mut builder = Pool::builder().connection_customizer(Box::new(SqliteConnectionCustomizer));
+    let mut builder = Pool::builder()
+        .connection_customizer(Box::new(SqliteConnectionCustomizer))
+        // Fail fast instead of queueing for 30s when the pool is exhausted.
+        .connection_timeout(Duration::from_secs(5));
     if database_path == ":memory:" {
         builder = builder.max_size(1);
+    } else {
+        // SQLite allows one writer at a time; a handful of connections is plenty on 1 vCPU
+        // and keeps per-connection page caches within the 2GB budget.
+        builder = builder.max_size(8).min_idle(Some(8));
     }
     let pool = builder.build(manager)?;
 
@@ -52,7 +61,11 @@ impl r2d2::CustomizeConnection<rusqlite::Connection, rusqlite::Error>
     fn on_acquire(&self, connection: &mut rusqlite::Connection) -> Result<(), rusqlite::Error> {
         connection.execute_batch(
             "PRAGMA journal_mode = WAL;
-             PRAGMA busy_timeout = 5000;",
+             PRAGMA synchronous = NORMAL;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA temp_store = MEMORY;
+             PRAGMA cache_size = -16384;
+             PRAGMA mmap_size = 134217728;",
         )
     }
 
@@ -63,10 +76,9 @@ pub fn create_item(pool: &DbPool, item: NewItem) -> rusqlite::Result<Item> {
     let connection = pool
         .get()
         .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
-    connection.execute(
-        "INSERT INTO items (title, description) VALUES (?1, ?2)",
-        params![item.title, item.description],
-    )?;
+    connection
+        .prepare_cached("INSERT INTO items (title, description) VALUES (?1, ?2)")?
+        .execute(params![item.title, item.description])?;
     let id = connection.last_insert_rowid();
 
     Ok(Item {
@@ -76,14 +88,17 @@ pub fn create_item(pool: &DbPool, item: NewItem) -> rusqlite::Result<Item> {
     })
 }
 
-pub fn list_items(pool: &DbPool) -> rusqlite::Result<Vec<Item>> {
+/// Returns at most `limit` items in ascending id order. Unbounded listing grows with every
+/// POST and eventually dominates CPU, memory and response time.
+pub fn list_items(pool: &DbPool, limit: usize) -> rusqlite::Result<Vec<Item>> {
     let connection = pool
         .get()
         .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let mut statement =
-        connection.prepare("SELECT id, title, description FROM items ORDER BY id")?;
+        connection
+        .prepare_cached("SELECT id, title, description FROM items ORDER BY id LIMIT ?1")?;
     let items = statement
-        .query_map([], |row| {
+        .query_map(params![limit as i64], |row| {
             Ok(Item {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -100,7 +115,7 @@ pub fn get_item(pool: &DbPool, item_id: i64) -> rusqlite::Result<Option<Item>> {
         .get()
         .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let mut statement =
-        connection.prepare("SELECT id, title, description FROM items WHERE id = ?1")?;
+        connection.prepare_cached("SELECT id, title, description FROM items WHERE id = ?1")?;
     let mut rows = statement.query(params![item_id])?;
 
     rows.next()?.map_or(Ok(None), |row| {
@@ -114,31 +129,30 @@ pub fn get_item(pool: &DbPool, item_id: i64) -> rusqlite::Result<Option<Item>> {
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: Option<mpsc::Sender<Job>>,
+    sender: Option<mpsc::SyncSender<Job>>,
 }
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
+/// Returned by [`ThreadPool::try_execute`] when the queue is full.
+#[derive(Debug)]
+pub struct QueueFull;
+
 impl ThreadPool {
-    /// Create a new ThreadPool.
-    ///
-    /// The size is the number of threads in the pool.
+    /// Create a pool of `size` workers with room for `queue_capacity` waiting jobs.
     ///
     /// # Panics
     ///
-    /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize) -> ThreadPool {
+    /// Panics if `size` is zero.
+    pub fn new(size: usize, queue_capacity: usize) -> ThreadPool {
         assert!(size > 0);
 
-        let (sender, receiver) = mpsc::channel();
-
+        let (sender, receiver) = mpsc::sync_channel(queue_capacity);
         let receiver = Arc::new(Mutex::new(receiver));
 
-        let mut workers = Vec::with_capacity(size);
-
-        for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
-        }
+        let workers = (0..size)
+            .map(|id| Worker::new(id, Arc::clone(&receiver)))
+            .collect();
 
         ThreadPool {
             workers,
@@ -146,13 +160,17 @@ impl ThreadPool {
         }
     }
 
-    pub fn execute<F>(&self, f: F)
+    /// Queue a job without blocking. Lets the caller shed load (e.g. reply 503)
+    /// instead of letting an unbounded backlog grow memory and latency.
+    pub fn try_execute<F>(&self, f: F) -> Result<(), QueueFull>
     where
         F: FnOnce() + Send + 'static,
     {
-        let job = Box::new(f);
-
-        self.sender.as_ref().unwrap().send(job).unwrap();
+        self.sender
+            .as_ref()
+            .unwrap()
+            .try_send(Box::new(f))
+            .map_err(|_| QueueFull)
     }
 }
 
@@ -161,42 +179,39 @@ impl Drop for ThreadPool {
         drop(self.sender.take());
 
         for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
-
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                let _ = thread.join();
             }
         }
     }
 }
 
 struct Worker {
-    id: usize,
     thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
-        let thread = thread::spawn(move || {
-            loop {
-                let message = receiver.lock().unwrap().recv();
-
-                match message {
-                    Ok(job) => {
-                        println!("Worker {id} got a job; executing.");
-
-                        job();
-                    }
-                    Err(_) => {
-                        println!("Worker {id} disconnected; shutting down.");
-                        break;
+        let thread = thread::Builder::new()
+            .name(format!("worker-{id}"))
+            // Handlers are shallow; small stacks keep memory low.
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                loop {
+                    // Hold the lock only while waiting for a job, not while running it.
+                    let message = receiver.lock().unwrap_or_else(|e| e.into_inner()).recv();
+                    match message {
+                        Ok(job) => {
+                            // A panicking handler must not permanently kill a worker.
+                            let _ = catch_unwind(AssertUnwindSafe(job));
+                        }
+                        Err(_) => break,
                     }
                 }
-            }
-        });
+            })
+            .expect("failed to spawn worker thread");
 
         Worker {
-            id,
             thread: Some(thread),
         }
     }
@@ -219,10 +234,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(created.id, 1);
-        assert_eq!(list_items(&pool).unwrap(), vec![created]);
+        assert_eq!(list_items(&pool, 1000).unwrap(), vec![created]);
         assert_eq!(
             get_item(&pool, 1).unwrap(),
-            Some(list_items(&pool).unwrap()[0].clone())
+            Some(list_items(&pool, 1000).unwrap()[0].clone())
         );
         assert_eq!(get_item(&pool, 999).unwrap(), None);
     }
