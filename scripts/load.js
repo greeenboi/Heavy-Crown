@@ -31,7 +31,7 @@ import { Rate } from 'k6/metrics';
 const itemCreationFailureRate = new Rate('item_creation_failures');
 
 // Select test type via environment variable (default to 'load')
-// Options: 'baseline', 'load', 'stress', 'soak'
+// Options: 'baseline', 'load', 'stress', 'soak', 'break'
 const TEST_TYPE = __ENV.TEST_TYPE || 'load';
 
 const profiles = {
@@ -76,6 +76,16 @@ const profiles = {
       { duration: '30s', target: 20 },
       { duration: '5m', target: 20 }, // Extend this to hours for a real soak test
       { duration: '30s', target: 0 },
+    ],
+  },
+  // 5. Break Test: Keep increasing VUs until the system must be stopped
+  break: {
+    executor: 'ramping-vus',
+    startVUs: 0,
+    stages: [
+      { duration: '30s', target: 1000 },
+      { duration: '45s', target: 10000 },
+      { duration: '45s', target: 50000 },
     ],
   },
 };
