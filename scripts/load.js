@@ -25,7 +25,7 @@ const BASE_URL = __ENV.TARGET_URL || 'http://192.168.0.210:9000';
 const SLO = { p95: 250, p99: 500, errorRate: 0.01 };
 
 // Staircase config for the break/capacity test
-const STEP_VUS = (__ENV.STEP_VUS || '10,25,50,100,150,200,300,400,500,750,1000,1500,2000')
+const STEP_VUS = (__ENV.STEP_VUS || '10,25,50,100,150,200,300,400,500,750,1000,1500,2000,3000,4000,5000,6000,7000,8000,9000,10000')
   .split(',')
   .map((n) => parseInt(n, 10));
 const STEP_RAMP = parseInt(__ENV.STEP_RAMP || '10', 10); // seconds
