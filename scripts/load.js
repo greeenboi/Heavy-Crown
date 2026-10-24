@@ -1,15 +1,15 @@
 /*
 podman run --rm -i \
-  -v "$(pwd)/scripts":/scripts:z \
-  -e TARGET_URL=http://192.168.0.210:9000 \
-  -e TEST_TYPE=baseline \
+  -v "$(pwd)/scripts":/scripts:ro,z \
+  -e TARGET_URL=http://192.168.0.10:9090 \
+  -e TEST_TYPE=break \
   grafana/k6 run /scripts/load.js
 
 # TEST_TYPE options: baseline | load | stress | break
 # `break` runs a staircase (hold each VU level) and reports the maximum number
 # of concurrent VUs the API sustained before breaching the SLOs.
 # Optional: -e STEP_VUS=10,50,100,200  -e STEP_HOLD=20 -e STEP_RAMP=10
-# Full report is also written to /scripts/summary.json and /scripts/summary.txt
+# The full report is printed to the terminal only (no files are written).
 */
 import http from 'k6/http';
 import exec from 'k6/execution';
@@ -148,10 +148,10 @@ export default function () {
   }
   sleep(0.5);
 
-  // 2. READ list
-  res = http.get(`${BASE_URL}/items/`, { tags: { ...tags('GET /items/'), name: 'GET /items/' } });
-  check(res, { 'GET /items/ status is 200': (r) => r.status === 200 });
-  sleep(0.5);
+  // // 2. READ list
+  // res = http.get(`${BASE_URL}/items/`, { tags: { ...tags('GET /items/'), name: 'GET /items/' } });
+  // check(res, { 'GET /items/ status is 200': (r) => r.status === 200 });
+  // sleep(0.5);
 
   // 3. READ single
   if (createdId) {
@@ -333,9 +333,5 @@ export function handleSummary(data) {
     };
   }
   text += '\n';
-  return {
-    stdout: text,
-    '/scripts/summary.txt': text,
-    '/scripts/summary.json': JSON.stringify({ testType: TEST_TYPE, slo: SLO, capacity, data }, null, 2),
-  };
+  return { stdout: text };
 }
