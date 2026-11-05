@@ -25,5 +25,10 @@ func InitDB() {
 	}
 
 	println("yaay db running")
+	// defer db.Close()
+}
 
+func Close() {
+	db.Close()
+	println("db session closed")
 }
