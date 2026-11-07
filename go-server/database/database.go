@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"go-server/types"
 	"log"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -31,4 +32,24 @@ func InitDB() {
 func Close() {
 	db.Close()
 	println("db session closed")
+}
+
+func InsertItem(name string, description string) (item types.Item, err error) {
+	var res sql.Result
+	var createError error
+	var createdItem types.Item
+	createQuery := `INSERT into items (name,description) VALUES (?, ?)`
+	res, createError = db.Exec(createQuery, name, description)
+
+	if createError != nil {
+		return createdItem, createError
+	}
+
+	id, _ := res.LastInsertId()
+	createdItem.Id = int(id)
+	createdItem.Title = name
+	createdItem.Description = description
+
+	return createdItem, createError
+
 }
