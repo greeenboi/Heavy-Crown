@@ -18,8 +18,6 @@ func CreateItemRequest(res http.ResponseWriter, req *http.Request) {
 	var err error
 	var responseItem types.Item
 
-	// fmt.Println(req.Body)
-
 	err = json.NewDecoder(req.Body).Decode(&item)
 
 	if err != nil {

@@ -53,3 +53,30 @@ func InsertItem(name string, description string) (item types.Item, err error) {
 	return createdItem, createError
 
 }
+
+func ReadAllItems() (items []types.Item, err error) {
+	var res *sql.Rows
+	var readError error
+	var result []types.Item
+	readAllQuery := `SELECT * from items`
+
+	res, readError = db.Query(readAllQuery)
+
+	if readError != nil {
+		return result, readError
+	}
+
+	defer res.Close()
+
+	for res.Next() {
+		var item types.Item
+		scanErr := res.Scan(&item.Id, &item.Title, &item.Description)
+		if scanErr != nil {
+			log.Println("nooo the error for reading an it is", scanErr)
+			continue
+		}
+		result = append(result, item)
+	}
+
+	return result, readError
+}
