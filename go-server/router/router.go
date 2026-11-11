@@ -14,7 +14,8 @@ func InitServer() {
 		res.WriteHeader(http.StatusOK)
 		res.Header().Set("Content-Type", "application/json")
 	})
-	http.HandleFunc("/items", routeHandler) // 😄 ¯\_(ツ)_/¯ idk this guy below me. he is going thru things..
+	http.HandleFunc("/items", routeHandler)
+	http.HandleFunc("/items/{id}", ReadOneItem) // 😄 ¯\_(ツ)_/¯ idk this guy below me. he is going thru things..
 	// Todo: there is an extra 10ms latency per every switch case we add in route handler, this is stupid there should be a better way
 	log.Fatal(http.ListenAndServe(":8080", nil))
 	// ¯\_(ツ)_/¯

@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"go-server/types"
 	"log"
 
@@ -76,6 +77,41 @@ func ReadAllItems() (items []types.Item, err error) {
 			continue
 		}
 		result = append(result, item)
+	}
+
+	return result, readError
+}
+
+func ReadSingleItem(id int) (item types.Item, err error) {
+	var res *sql.Rows
+	var readError error
+	var result types.Item
+
+	readSingleQuery := `SELECT * from items WHERE id = ?`
+
+	res, readError = db.Query(readSingleQuery, id)
+
+	if readError != nil {
+		return result, readError
+	}
+
+	defer res.Close()
+
+	count := 0
+	for res.Next() {
+		var item types.Item
+		scanErr := res.Scan(&item.Id, &item.Title, &item.Description)
+		if scanErr != nil {
+			log.Println("nooo the error for reading an it is", scanErr)
+			return result, scanErr
+		}
+		result = item
+		count += 1
+	}
+
+	if count == 0 {
+		readError = errors.New("there is no id by that name")
+		return result, readError
 	}
 
 	return result, readError
