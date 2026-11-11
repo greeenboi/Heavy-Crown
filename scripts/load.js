@@ -131,11 +131,11 @@ export default function () {
 
   // 1. WRITE
   let res = http.post(
-    `${BASE_URL}/items/`,
+    `${BASE_URL}/items`,
     JSON.stringify({ title: `Item_${suffix}`, description: `Load test description ${suffix}` }),
-    { headers, tags: { ...tags('POST /items/'), name: 'POST /items/' } },
+    { headers, tags: { ...tags('POST /items'), name: 'POST /items' } },
   );
-  const postOk = check(res, { 'POST /items/ status is 201': (r) => r.status === 201 });
+  const postOk = check(res, { 'POST /items status is 201': (r) => r.status === 201 });
   itemCreationFailureRate.add(!postOk);
 
   let createdId = null;
@@ -148,10 +148,10 @@ export default function () {
   }
   sleep(0.5);
 
-  // // 2. READ list
-  // res = http.get(`${BASE_URL}/items/`, { tags: { ...tags('GET /items/'), name: 'GET /items/' } });
-  // check(res, { 'GET /items/ status is 200': (r) => r.status === 200 });
-  // sleep(0.5);
+  // 2. READ list
+  res = http.get(`${BASE_URL}/items`, { tags: { ...tags('GET /items'), name: 'GET /items' } });
+  check(res, { 'GET /items/ status is 200': (r) => r.status === 200 });
+  sleep(0.5);
 
   // 3. READ single
   if (createdId) {
