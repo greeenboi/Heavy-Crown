@@ -37,34 +37,34 @@ func Close() {
 
 func InsertItem(name string, description string) (item types.Item, err error) {
 	var res sql.Result
-	var createError error
-	var createdItem types.Item
+	// var err error
+	// var createdItem types.Item
 	createQuery := `INSERT into items (name,description) VALUES (?, ?)`
-	res, createError = db.Exec(createQuery, name, description)
+	res, err = db.Exec(createQuery, name, description)
 
-	if createError != nil {
-		return createdItem, createError
+	if err != nil {
+		return item, err
 	}
 
 	id, _ := res.LastInsertId()
-	createdItem.Id = int(id)
-	createdItem.Title = name
-	createdItem.Description = description
+	item.Id = int(id)
+	item.Title = name
+	item.Description = description
 
-	return createdItem, createError
+	return item, err
 
 }
 
 func ReadAllItems() (items []types.Item, err error) {
 	var res *sql.Rows
-	var readError error
-	var result []types.Item
+	// var err error
+	// var items []types.Item
 	readAllQuery := `SELECT * from items`
 
-	res, readError = db.Query(readAllQuery)
+	res, err = db.Query(readAllQuery)
 
-	if readError != nil {
-		return result, readError
+	if err != nil {
+		return items, err
 	}
 
 	defer res.Close()
@@ -76,43 +76,43 @@ func ReadAllItems() (items []types.Item, err error) {
 			log.Println("nooo the error for reading an it is", scanErr)
 			continue
 		}
-		result = append(result, item)
+		items = append(items, item)
 	}
 
-	return result, readError
+	return items, err
 }
 
 func ReadSingleItem(id int) (item types.Item, err error) {
 	var res *sql.Rows
-	var readError error
-	var result types.Item
+	// var err error
+	// var items types.Item
 
 	readSingleQuery := `SELECT * from items WHERE id = ?`
 
-	res, readError = db.Query(readSingleQuery, id)
+	res, err = db.Query(readSingleQuery, id)
 
-	if readError != nil {
-		return result, readError
+	if err != nil {
+		return item, err
 	}
 
 	defer res.Close()
 
 	count := 0
 	for res.Next() {
-		var item types.Item
-		scanErr := res.Scan(&item.Id, &item.Title, &item.Description)
+		var scannedItem types.Item
+		scanErr := res.Scan(&scannedItem.Id, &scannedItem.Title, &scannedItem.Description)
 		if scanErr != nil {
 			log.Println("nooo the error for reading an it is", scanErr)
-			return result, scanErr
+			return item, scanErr
 		}
-		result = item
+		item = scannedItem
 		count += 1
 	}
 
 	if count == 0 {
-		readError = errors.New("there is no id by that name")
-		return result, readError
+		err = errors.New("there is no id by that name")
+		return item, err
 	}
 
-	return result, readError
+	return item, err
 }
