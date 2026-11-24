@@ -24,7 +24,7 @@ func InitServer() {
 func routeHandler(response http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case http.MethodGet:
-		ReadAllItems(response, req)
+		go ReadAllItems(response, req)
 	case http.MethodPost:
 		CreateItemRequest(response, req)
 	default:

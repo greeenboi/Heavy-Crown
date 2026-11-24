@@ -5,6 +5,7 @@ package main
 import (
 	"go-server/database"
 	"go-server/router"
+	"runtime"
 )
 
 // :D shh dw abt this
@@ -15,13 +16,11 @@ import (
 // }
 
 func main() {
-	print("hello world \n")
+	print("hello world the runtime cpus we have are", runtime.NumCPU(), "\n")
 	database.InitDB()
-
 	defer database.Close()
 
 	router.InitServer()
 	// 1_ post , resp:{title,desc}
 
-	//
 }
